@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CITIZEN
+  DOCTOR
+  PHARMACY
+  REGULATOR
+}
+
+enum PrescriptionStatus {
+  CREATED
+  VERIFIED
+  DISPENSED
+  EXPIRED
+}
+
+enum DispenseStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+}
+
+enum BlockchainAction {
+  PRESCRIPTION_CREATED
+  PRESCRIPTION_VERIFIED
+  PRESCRIPTION_DISPENSED
+  BATCH_REGISTERED
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  role          Role
+  walletAddress String?  @unique
+  digilockerId  String?  @unique
+  abhaId        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  prescriptionsAsDoctor  Prescription[]   @relation("DoctorPrescriptions")
+  prescriptionsAsPatient Prescription[]   @relation("PatientPrescriptions")
+  dispenseRecords        DispenseRecord[]
+  auditLogs              AuditLog[]
+  notifications          Notification[]
+}
+
+model Prescription {
+  id             String             @id @default(cuid())
+  prescriptionId String             @unique
+  doctorId       String
+  patientId      String
+  ipfsHash       String
+  status         PrescriptionStatus @default(CREATED)
+  expiryDate     DateTime
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  doctor         User               @relation("DoctorPrescriptions", fields: [doctorId], references: [id])
+  patient        User               @relation("PatientPrescriptions", fields: [patientId], references: [id])
+  items          PrescriptionItem[]
+  dispenseRecord DispenseRecord?
+
+  @@index([doctorId])
+  @@index([patientId])
+  @@index([status])
+}
+
+model PrescriptionItem {
+  id             String @id @default(cuid())
+  prescriptionId String
+  medicineName   String
+  dosage         String
+  duration       String
+  quantity       Int
+  instructions   String?
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  @@index([prescriptionId])
+}
+
+model DispenseRecord {
+  id             String         @id @default(cuid())
+  prescriptionId String         @unique
+  pharmacyId     String
+  dispensedAt    DateTime       @default(now())
+  txHash         String?
+  status         DispenseStatus @default(PENDING)
+  remarks        String?
+
+  prescription  Prescription   @relation(fields: [prescriptionId], references: [id])
+  pharmacy      User           @relation(fields: [pharmacyId], references: [id])
+  blockchainTxn BlockchainTxn?
+
+  @@index([pharmacyId])
+}
+
+model BlockchainTxn {
+  id            String           @id @default(cuid())
+  txHash        String           @unique
+  blockNumber   Int?
+  action        BlockchainAction
+  walletAddress String
+  timestamp     DateTime         @default(now())
+  network       String           @default("polygon-amoy")
+
+  dispenseRecordId String?         @unique
+  dispenseRecord   DispenseRecord? @relation(fields: [dispenseRecordId], references: [id])
+
+  @@index([walletAddress])
+  @@index([action])
+}
+
+model MedicineBatch {
+  id           String   @id @default(cuid())
+  medicineName String
+  batchNumber  String   @unique
+  manufacturer String
+  expiryDate   DateTime
+  ipfsHash     String?
+  createdAt    DateTime @default(now())
+
+  @@index([medicineName])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  role      Role
+  action    String
+  entityId  String
+  txHash    String?
+  timestamp DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityId])
+  @@index([timestamp])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([isRead])
+}
